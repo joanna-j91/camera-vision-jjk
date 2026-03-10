@@ -41,11 +41,11 @@ const AUDIO_SOURCES = {
     shrine: './audio/malevolent.mp3',
 };
 
+
 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 const audioTracks = {};
-let currentAudio = null;
-let currentGainNode = null;
-let fadeOutInterval = null;
+let currentTech_audio = null;
+let fadeInterval = null;
 
 Object.entries(AUDIO_SOURCES).forEach(([tech, url]) => {
     const audio = new Audio();
@@ -63,73 +63,73 @@ Object.entries(AUDIO_SOURCES).forEach(([tech, url]) => {
 });
 
 document.addEventListener('click', () => {
-    if (audioContext.state === 'suspended') {
-        audioContext.resume().then(() => console.log('AudioContext resumed'));
-    }
+    if (audioContext.state === 'suspended') audioContext.resume();
 }, { once: true });
 
-document.addEventListener('keydown', () => {
-    if (audioContext.state === 'suspended') audioContext.resume();
-});
+function stopAll(exceptTech = null) {
+    Object.entries(audioTracks).forEach(([tech, { audio, gainNode }]) => {
+        if (tech === exceptTech) return;
+        gainNode.gain.value = 0;
+        audio.pause();
+        audio.currentTime = 0;
+    });
+}
 
 function fadeIn(tech, duration = 1.5) {
     if (!audioTracks[tech]) return;
-    const { audio, gainNode } = audioTracks[tech];
-
-    //debugging stateements
-    console.log('Attempting to play:', tech);
-    console.log('AudioContext state:', audioContext.state);
-    console.log('Audio src:', audio.src);
+    if (currentTech_audio === tech) return; // already playing this one
 
     if (audioContext.state === 'suspended') audioContext.resume();
 
-    if (fadeOutInterval) { clearInterval(fadeOutInterval); fadeOutInterval = null; }
+    // Clear any running fade
+    if (fadeInterval) { clearInterval(fadeInterval); fadeInterval = null; }
 
-    if (currentAudio && currentAudio !== audio) {
-        const prev = currentAudio;
-        const prevGain = currentGainNode;
-        let vol = prevGain.gain.value;
-        const step = vol / (duration * 60);
-        const interval = setInterval(() => {
-            vol -= step;
-            if (vol <= 0) { prevGain.gain.value = 0; prev.pause(); clearInterval(interval); }
-            else prevGain.gain.value = vol;
-        }, 1000 / 60);
-    }
+    // Hard stop everything else immediately
+    stopAll(tech);
 
-    audio.currentTime = 0;
-    audio.play();
+    currentTech_audio = tech;
+
+    const { audio, gainNode } = audioTracks[tech];
     gainNode.gain.value = 0;
+    audio.currentTime = 0;
+    audio.play().catch(e => console.warn('Play failed:', e));
+
     let vol = 0;
     const target = 0.8;
     const step = target / (duration * 60);
-    const interval = setInterval(() => {
+    fadeInterval = setInterval(() => {
         vol += step;
-        if (vol >= target) { gainNode.gain.value = target; clearInterval(interval); }
-        else gainNode.gain.value = vol;
+        if (vol >= target) {
+            gainNode.gain.value = target;
+            clearInterval(fadeInterval);
+            fadeInterval = null;
+        } else {
+            gainNode.gain.value = vol;
+        }
     }, 1000 / 60);
-
-    currentAudio = audio;
-    currentGainNode = gainNode;
 }
 
 function fadeOut(duration = 2.0) {
-    if (!currentAudio) return;
-    const audio = currentAudio;
-    const gainNode = currentGainNode;
+    if (!currentTech_audio) return;
+    const { audio, gainNode } = audioTracks[currentTech_audio];
+    currentTech_audio = null;
+
+    if (fadeInterval) { clearInterval(fadeInterval); fadeInterval = null; }
+
     let vol = gainNode.gain.value;
     const step = vol / (duration * 60);
-    fadeOutInterval = setInterval(() => {
+    fadeInterval = setInterval(() => {
         vol -= step;
         if (vol <= 0) {
             gainNode.gain.value = 0;
             audio.pause();
-            clearInterval(fadeOutInterval);
-            fadeOutInterval = null;
-        } else gainNode.gain.value = vol;
+            audio.currentTime = 0;
+            clearInterval(fadeInterval);
+            fadeInterval = null;
+        } else {
+            gainNode.gain.value = vol;
+        }
     }, 1000 / 60);
-    currentAudio = null;
-    currentGainNode = null;
 }
 
 function getRed(i) {
