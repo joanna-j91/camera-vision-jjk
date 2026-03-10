@@ -3,7 +3,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
-// --- Scene & Rendering ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.z = 55;
@@ -35,6 +34,103 @@ geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 const particles = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.3, vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
 scene.add(particles);
 
+const AUDIO_SOURCES = {
+    red:    './audio/red.mp3',
+    void:   './audio/infinite.mp3',
+    purple: './audio/hollow.mp3',
+    shrine: './audio/malevolent.mp3',
+};
+
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+const audioTracks = {};
+let currentAudio = null;
+let currentGainNode = null;
+let fadeOutInterval = null;
+
+Object.entries(AUDIO_SOURCES).forEach(([tech, url]) => {
+    const audio = new Audio();
+    audio.src = url;
+    audio.loop = true;
+    audio.preload = 'auto';
+
+    const source = audioContext.createMediaElementSource(audio);
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = 0;
+    source.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    audioTracks[tech] = { audio, gainNode };
+});
+
+document.addEventListener('click', () => {
+    if (audioContext.state === 'suspended') {
+        audioContext.resume().then(() => console.log('AudioContext resumed'));
+    }
+}, { once: true });
+
+document.addEventListener('keydown', () => {
+    if (audioContext.state === 'suspended') audioContext.resume();
+});
+
+function fadeIn(tech, duration = 1.5) {
+    if (!audioTracks[tech]) return;
+    const { audio, gainNode } = audioTracks[tech];
+
+    //debugging stateements
+    console.log('Attempting to play:', tech);
+    console.log('AudioContext state:', audioContext.state);
+    console.log('Audio src:', audio.src);
+
+    if (audioContext.state === 'suspended') audioContext.resume();
+
+    if (fadeOutInterval) { clearInterval(fadeOutInterval); fadeOutInterval = null; }
+
+    if (currentAudio && currentAudio !== audio) {
+        const prev = currentAudio;
+        const prevGain = currentGainNode;
+        let vol = prevGain.gain.value;
+        const step = vol / (duration * 60);
+        const interval = setInterval(() => {
+            vol -= step;
+            if (vol <= 0) { prevGain.gain.value = 0; prev.pause(); clearInterval(interval); }
+            else prevGain.gain.value = vol;
+        }, 1000 / 60);
+    }
+
+    audio.currentTime = 0;
+    audio.play();
+    gainNode.gain.value = 0;
+    let vol = 0;
+    const target = 0.8;
+    const step = target / (duration * 60);
+    const interval = setInterval(() => {
+        vol += step;
+        if (vol >= target) { gainNode.gain.value = target; clearInterval(interval); }
+        else gainNode.gain.value = vol;
+    }, 1000 / 60);
+
+    currentAudio = audio;
+    currentGainNode = gainNode;
+}
+
+function fadeOut(duration = 2.0) {
+    if (!currentAudio) return;
+    const audio = currentAudio;
+    const gainNode = currentGainNode;
+    let vol = gainNode.gain.value;
+    const step = vol / (duration * 60);
+    fadeOutInterval = setInterval(() => {
+        vol -= step;
+        if (vol <= 0) {
+            gainNode.gain.value = 0;
+            audio.pause();
+            clearInterval(fadeOutInterval);
+            fadeOutInterval = null;
+        } else gainNode.gain.value = vol;
+    }, 1000 / 60);
+    currentAudio = null;
+    currentGainNode = null;
+}
 
 function getRed(i) {
     if (i < COUNT * 0.1) {
@@ -69,17 +165,115 @@ function getPurple(i) {
 
 function getShrine(i) {
     const total = COUNT;
-    if (i < total * 0.3) return { x: (Math.random() - 0.5) * 80, y: -15, z: (Math.random() - 0.5) * 80, r: 0.4, g: 0, b: 0, s: 0.8 };
-    else if (i < total * 0.4) {
-        const px = ((i % 4) < 2 ? 1 : -1) * 12; const pz = ((i % 4) % 2 == 0 ? 1 : -1) * 8;
-        return { x: px + (Math.random() - 0.5) * 2, y: -15 + Math.random() * 30, z: pz + (Math.random() - 0.5) * 2, r: 0.2, g: 0.2, b: 0.2, s: 0.6 };
-    } else if (i < total * 0.6) {
-        const t = Math.random() * Math.PI * 2; const rad = Math.random() * 30;
-        const curve = Math.pow(rad / 30, 2) * 10;
-        return { x: rad * Math.cos(t), y: 15 - curve + (Math.random() * 2), z: rad * Math.sin(t) * 0.6, r: 0.6, g: 0, b: 0, s: 0.6 };
-    } else return { x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, s: 0 };
-}
+    const seg = i / total;
 
+    if (seg < 0.12) {
+        return {
+            x: (Math.random() - 0.5) * 100,
+            y: -18 + (Math.random() - 0.5) * 2,
+            z: (Math.random() - 0.5) * 60,
+            r: 0.35, g: 0.0, b: 0.0, s: 0.7
+        };
+    }
+
+    if (seg < 0.22) {
+        const pillarX = [-14, -5, 5, 14];
+        const col = Math.floor((seg - 0.12) / 0.025); // 0–3
+        const px = pillarX[Math.min(col, 3)];
+        return {
+            x: px + (Math.random() - 0.5) * 1.2,
+            y: -18 + Math.random() * 28,
+            z: (Math.random() - 0.5) * 1.2,
+            r: col % 2 === 0 ? 0.9 : 0.15,
+            g: 0.0,
+            b: 0.0,
+            s: col % 2 === 0 ? 1.8 : 0.9
+        };
+    }
+
+    if (seg < 0.44) {
+        const t = Math.random() * Math.PI;
+        const roofWidth = 28;
+        const px = (Math.random() - 0.5) * roofWidth * 2;
+        const normalizedX = px / roofWidth;
+        const roofY = 10 + Math.pow(Math.abs(normalizedX), 1.6) * 12; 
+        const scatter = (Math.random() - 0.5) * 1.5;
+        const brightness = 0.5 + Math.random() * 0.5;
+        return {
+            x: px,
+            y: roofY + scatter,
+            z: (Math.random() - 0.5) * 8,
+            r: brightness,
+            g: 0.0,
+            b: 0.0,
+            s: 1.2
+        };
+    }
+
+    if (seg < 0.50) {
+        const px = (Math.random() - 0.5) * 20;
+        return {
+            x: px,
+            y: 10.5 + (Math.random() - 0.5) * 0.8,
+            z: (Math.random() - 0.5) * 2,
+            r: 1.0, g: 0.15, b: 0.0, s: 2.0
+        };
+    }
+
+    if (seg < 0.56) {
+        const r = Math.random() * 3.5;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        return {
+            x: r * Math.sin(phi) * Math.cos(theta),
+            y: 11 + r * Math.sin(phi) * Math.sin(theta),
+            z: r * Math.cos(phi),
+            r: 1.0, g: 0.2, b: 0.1, s: 2.8
+        };
+    }
+    if (seg < 0.68) {
+        const toothCount = 14;
+        const toothIdx = Math.floor(Math.random() * toothCount);
+        const tx = -26 + toothIdx * 4 + (Math.random() - 0.5) * 1.5;
+        const toothHeight = 4 + Math.random() * 10;
+        return {
+            x: tx,
+            y: -18 + Math.random() * toothHeight,
+            z: (Math.random() - 0.5) * 3,
+            r: 0.7 + Math.random() * 0.3,
+            g: 0.0,
+            b: 0.0,
+            s: 1.3
+        };
+    }
+
+    if (seg < 0.84) {
+        const spineCount = 18;
+        const spineIdx = Math.floor(Math.random() * spineCount);
+        const angle = (spineIdx / spineCount) * Math.PI * 2;
+        const dist = 20 + Math.random() * 25;
+        const wobble = (Math.random() - 0.5) * 4;
+        return {
+            x: Math.cos(angle) * dist + wobble,
+            y: -5 + Math.sin(angle * 0.5) * 10 + wobble,
+            z: (Math.random() - 0.5) * 5,
+            r: 0.5 + Math.random() * 0.4,
+            g: 0.0,
+            b: 0.0,
+            s: 0.8
+        };
+    }
+
+    return {
+        x: (Math.random() - 0.5) * 120,
+        y: (Math.random() - 0.5) * 60,
+        z: (Math.random() - 0.5) * 40,
+        r: 0.2 + Math.random() * 0.2,
+        g: 0.0,
+        b: 0.0,
+        s: 0.5
+    };
+}
 
 let currentTech = 'neutral';
 let shakeIntensity = 0;
@@ -118,11 +312,11 @@ function updateState(tech) {
     const nameEl = document.getElementById('technique-name');
     shakeIntensity = tech !== 'neutral' ? 0.4 : 0;
 
-    if (tech === 'shrine') { glowColor = '#ff0000'; nameEl.innerText = "Domain Expansion: Malevolent Shrine"; bloomPass.strength = 2.5; }
-    else if (tech === 'purple') { glowColor = '#bb00ff'; nameEl.innerText = "Secret Technique: Hollow Purple"; bloomPass.strength = 4.0; }
-    else if (tech === 'void') { glowColor = '#00ffff'; nameEl.innerText = "Domain Expansion: Infinite Void"; bloomPass.strength = 2.0; }
-    else if (tech === 'red') { glowColor = '#ff3333'; nameEl.innerText = "Reverse Cursed Technique: Red"; bloomPass.strength = 2.5; }
-    else { glowColor = '#00ffff'; nameEl.innerText = "Neutral State"; bloomPass.strength = 1.0; }
+    if (tech === 'shrine') { glowColor = '#ff0000'; nameEl.innerText = "Domain Expansion: Malevolent Shrine"; bloomPass.strength = 2.5; fadeIn('shrine'); }
+    else if (tech === 'purple') { glowColor = '#bb00ff'; nameEl.innerText = "Secret Technique: Hollow Purple"; bloomPass.strength = 4.0; fadeIn('purple'); }
+    else if (tech === 'void') { glowColor = '#00ffff'; nameEl.innerText = "Domain Expansion: Infinite Void"; bloomPass.strength = 2.0; fadeIn('void'); }
+    else if (tech === 'red') { glowColor = '#ff3333'; nameEl.innerText = "Reverse Cursed Technique: Red"; bloomPass.strength = 2.5; fadeIn('red'); }
+    else { glowColor = '#00ffff'; nameEl.innerText = "Neutral State"; bloomPass.strength = 1.0; fadeOut(); }
 
     for (let i = 0; i < COUNT; i++) {
         let p;
