@@ -313,9 +313,9 @@ function updateState(tech) {
     shakeIntensity = tech !== 'neutral' ? 0.4 : 0;
 
     if (tech === 'shrine') { glowColor = '#ff0000'; nameEl.innerText = "Domain Expansion: Malevolent Shrine"; bloomPass.strength = 2.5; fadeIn('shrine'); }
-    else if (tech === 'purple') { glowColor = '#bb00ff'; nameEl.innerText = "Secret Technique: Hollow Purple"; bloomPass.strength = 4.0; fadeIn('purple'); }
+    else if (tech === 'purple') { glowColor = '#bb00ff'; nameEl.innerText = "Cursed Technique: Hollow Purple"; bloomPass.strength = 4.0; fadeIn('purple'); }
     else if (tech === 'void') { glowColor = '#00ffff'; nameEl.innerText = "Domain Expansion: Infinite Void"; bloomPass.strength = 2.0; fadeIn('void'); }
-    else if (tech === 'red') { glowColor = '#ff3333'; nameEl.innerText = "Reverse Cursed Technique: Red"; bloomPass.strength = 2.5; fadeIn('red'); }
+    else if (tech === 'red') { glowColor = '#ff3333'; nameEl.innerText = "Cursed Technique: Red"; bloomPass.strength = 2.5; fadeIn('red'); }
     else { glowColor = '#00ffff'; nameEl.innerText = "Neutral State"; bloomPass.strength = 1.0; fadeOut(); }
 
     for (let i = 0; i < COUNT; i++) {
@@ -370,17 +370,14 @@ function animate() {
     particles.geometry.attributes.color.needsUpdate = true;
     particles.geometry.attributes.size.needsUpdate = true;
 
-    // UPDATED ROTATION LOGIC: Locking rotation for Shrine
     if (currentTech === 'red') {
         particles.rotation.z -= 0.1;
     } else if (currentTech === 'purple') {
         particles.rotation.z += 0.2;
         particles.rotation.y += 0.05;
     } else if (currentTech === 'shrine') {
-        // FORCE UPRIGHT: Reset and freeze all rotations
         particles.rotation.set(0, 0, 0);
     } else {
-        // Default Neutral rotation
         particles.rotation.y += 0.005;
     }
 
